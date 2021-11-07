@@ -1,0 +1,38 @@
+private key [bytes]:
+[190 176 190 239 43 217 187 181 28 162 40 43 122 39 130 90 160 206 191 236 167 120 32 187 30 151 81 112 164 122 244 179]
+
+private key [hex]:
+beb0beef2bd9bbb51ca2282b7a27825aa0cebfeca77820bb1e975170a47af4b3
+
+private key [base58]:
+DqNn6UQMHZn4aZ5XncCbUDoXUW8Da5DJ5H1STSm1AkVg
+
+private key [wif] (uncompressed):
+932u6Q4xEC9UYRb3rS2BWrSpSPEt5KaU8NNP7EWy7zSkWmfBiGe
+
+private key [wif] (compressed):
+cTyNvppSmECQZhXHbBSDQmExP3AGS4zijXKNaWfGhrYf4A64gU8G
+
+public key [bytes] (uncompressed):
+[4 107 213 97 142 157 97 242 23 93 81 83 241 119 159 35 107 23 255 40 150 181 48 128 48 180 186 132 229 246 31 105 40 247 35 112 196 251 65 188 252 241 107 65 141 32 9 163 203 157 31 157 120 25 229 80 25 54 112 104 147 196 75 13 192]
+
+public key [hex] (uncompressed):
+046bd5618e9d61f2175d5153f1779f236b17ff2896b5308030b4ba84e5f61f6928f72370c4fb41bcfcf16b418d2009a3cb9d1f9d7819e5501936706893c44b0dc0
+
+public key [base58] (uncompressed):
+PdUt1qDTD4EQ2jiZFFqmkUYeqCwRxTbJEesc2gn5JvuNZdj9FRZPtakU2ED2SX86ZxV2TUMfH7xbxERysMMkWsTV
+
+public key bytes (compressed):
+[2 107 213 97 142 157 97 242 23 93 81 83 241 119 159 35 107 23 255 40 150 181 48 128 48 180 186 132 229 246 31 105 40]
+
+public key [hex] (compressed):
+026bd5618e9d61f2175d5153f1779f236b17ff2896b5308030b4ba84e5f61f6928
+
+public key [base58] (compressed):
+iia5estugmPvnah2WmLT3ExXcX2sGhaBHvmb3TY54WRD
+
+address [base58] (uncompressed):
+mgFv6afUVhrdd3D6mY2iyWzHVk5b64qTok
+
+address [base58] (compressed):
+n43p2f3c9EuVD6WepuVXKkDS7dJYhGjABM
