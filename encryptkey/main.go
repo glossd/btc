@@ -7,14 +7,40 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 )
 
 func main() {
 	text := "91fPLgXt3tJPZGyDSLEFnD4btsZ9UZ86ibUtShVPsPMJxP15qJP"
-	got := encrypt(text, "приветик")
-	fmt.Println(got)
-	if decrypt(got, "приветик") != text {
+	key := "sixteenbytesword"
+	encryptedFilepath := "./encypted-private-keys"
+	got := encrypt(text, key)
+
+	if decrypt(got, key) != text {
 		log.Fatal("not equal")
+	}
+
+	_ = os.Remove(encryptedFilepath)
+	err := os.WriteFile(encryptedFilepath, []byte(got), 0644)
+	check(err)
+
+	gotFile, err := os.ReadFile(encryptedFilepath)
+	check(err)
+	if decrypt(string(gotFile), key) != text {
+		log.Fatal("not equal")
+	}
+}
+
+func DecryptAndPrint(key, encryptedFilepath string) {
+	text, err := os.ReadFile(encryptedFilepath)
+	check(err)
+	decryptedText := decrypt(string(text), key)
+	fmt.Println(decryptedText)
+}
+
+func check(err error) {
+	if err != nil {
+		log.Fatal(err)
 	}
 }
 
