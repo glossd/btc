@@ -1,4 +1,4 @@
-package main
+package crypt
 
 import (
 	"crypto/aes"
@@ -10,31 +10,10 @@ import (
 	"os"
 )
 
-func main() {
-	text := "91fPLgXt3tJPZGyDSLEFnD4btsZ9UZ86ibUtShVPsPMJxP15qJP"
-	key := "sixteenbytesword"
-	encryptedFilepath := "./encypted-private-keys"
-	got := encrypt(text, key)
-
-	if decrypt(got, key) != text {
-		log.Fatal("not equal")
-	}
-
-	_ = os.Remove(encryptedFilepath)
-	err := os.WriteFile(encryptedFilepath, []byte(got), 0644)
-	check(err)
-
-	gotFile, err := os.ReadFile(encryptedFilepath)
-	check(err)
-	if decrypt(string(gotFile), key) != text {
-		log.Fatal("not equal")
-	}
-}
-
-func DecryptAndPrint(key, encryptedFilepath string) {
+func decryptAndPrint(key, encryptedFilepath string) {
 	text, err := os.ReadFile(encryptedFilepath)
 	check(err)
-	decryptedText := decrypt(string(text), key)
+	decryptedText := Decrypt(string(text), key)
 	fmt.Println(decryptedText)
 }
 
@@ -44,7 +23,7 @@ func check(err error) {
 	}
 }
 
-func decrypt(cipherstring string, keystring string) string {
+func Decrypt(cipherstring string, keystring string) string {
 	// Byte array of the string
 	ciphertext := []byte(cipherstring)
 
@@ -78,7 +57,7 @@ func decrypt(cipherstring string, keystring string) string {
 	return string(ciphertext)
 }
 
-func encrypt(plainstring, keystring string) string {
+func Encrypt(plainstring, keystring string) string {
 	// Byte array of the string
 	plaintext := []byte(plainstring)
 

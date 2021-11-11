@@ -1,6 +1,6 @@
 module github.com/glossd/btc
 
-go 1.17
+go 1.16
 
 require (
 	github.com/aead/siphash v1.0.1 // indirect

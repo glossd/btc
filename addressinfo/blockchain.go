@@ -3,6 +3,7 @@ package addressinfo
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/glossd/btc/netchain"
 	"io/ioutil"
 	"net/http"
 )
@@ -18,30 +19,35 @@ type blockchainUTXO struct {
 	Value int64 `json:"value"`
 }
 
-func fetchFromBlockchain(address string) ([]UTXO, error) {
+func FetchFromBlockchain(address string, net netchain.Net) (Address, error) {
+	if net != netchain.MainNet {
+		return Address{}, fmt.Errorf("only mainnet is supported fetching UTXOs from blockchain.info")
+	}
 	resp, err := http.Get(fmt.Sprintf("https://blockchain.info/unspent?active=%s", address))
 	if err != nil {
-		return nil, err
+		return Address{}, err
 	}
 	defer resp.Body.Close()
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return Address{}, err
 	}
 
 	var data blockchainResponse
 	err = json.Unmarshal(bodyBytes, &data)
 	if err != nil {
-		return nil, err
+		return Address{}, err
 	}
-	result := make([]UTXO, 0, len(data.UnspentOutputs))
+	utxos := make([]UTXO, 0, len(data.UnspentOutputs))
+	var balance int64
 	for _, output := range data.UnspentOutputs {
-		result = append(result, UTXO{
+		utxos = append(utxos, UTXO{
 			TxID:         output.TxID,
 			Pbscript:     output.Script,
 			Balance:      output.Value,
 			SourceOutIdx: uint32(output.TxOutputN),
 		})
+		balance += output.Value
 	}
-	return result, nil
+	return Address{UTXOs: utxos, Balance: balance}, nil
 }

@@ -1,9 +1,10 @@
-package main
+package wallet
 
 import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"testing"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -11,7 +12,7 @@ import (
 	"github.com/btcsuite/btcutil/base58"
 )
 
-func main() {
+func TestPrintFullInfo(t *testing.T) {
 	netParams := &chaincfg.TestNet3Params
 	priv, err := btcec.NewPrivateKey(btcec.S256())
 	if err != nil {
