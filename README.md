@@ -1,10 +1,10 @@
-The library helps you to transfer bitcoins.
+This library helps you transfer your bitcoins.
  
 ```shell script
 go get github.com/glossd/btc
 ```
 
-First we need to create transaction then broadcast it to blockchain.  
+First we need to create a transaction then broadcast it to blockchain.  
  
 
 ```go
@@ -39,4 +39,4 @@ func main() {
 }
 ```
 
-For testing purposes we use `netchain.TestNet`. If you want to send real bitcoins to blockchain you need to specify BTC_API_KEY env var for blockcypher or you could pass your own txutil.CreateParams.Fetch function to txutil.Create.
+For testing purposes we used `netchain.TestNet`. If you want to send real bitcoins to blockchain you need to specify BTC_API_KEY env var for blockcypher or you could pass your own txutil.CreateParams.Fetch function to txutil.Create.
