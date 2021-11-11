@@ -29,7 +29,7 @@ func main() {
 	}
 
 	// you can broadcast transaction yourself.
-	// copy rawTx and paste it to https://www.blockchain.com/btc/pushtx
+	// copy rawTx and paste it to https://live.blockcypher.com/btc-testnet/pushtx/
 	txID, err := txutil.Broadcast(rawTx, net)
 	if err != nil {
 		panic(err)
