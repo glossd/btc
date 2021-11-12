@@ -42,10 +42,10 @@ func FetchFromBlockchain(address string, net netchain.Net) (Address, error) {
 	var balance int64
 	for _, output := range data.UnspentOutputs {
 		utxos = append(utxos, UTXO{
-			TxID:         output.TxID,
-			Pbscript:     output.Script,
-			Balance:      output.Value,
-			SourceOutIdx: uint32(output.TxOutputN),
+			TxID:     output.TxID,
+			Pbscript: output.Script,
+			Balance:  output.Value,
+			TxOutIdx: uint32(output.TxOutputN),
 		})
 		balance += output.Value
 	}

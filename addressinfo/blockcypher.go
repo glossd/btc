@@ -17,7 +17,7 @@ func FetchFromBlockcypher(address string, net netchain.Net) (Address, error) {
 		for outputIdx, output := range tx.Outputs {
 			if len(output.Addresses) == 1 && output.Addresses[0] == address {
 				if output.SpentBy == "" {
-					utxos = append(utxos, UTXO{TxID: tx.Hash, Balance: output.Value.Int64(), Pbscript: output.Script, SourceOutIdx: uint32(outputIdx)})
+					utxos = append(utxos, UTXO{TxID: tx.Hash, Balance: output.Value.Int64(), Pbscript: output.Script, TxOutIdx: uint32(outputIdx)})
 				}
 			}
 		}

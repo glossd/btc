@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -16,16 +15,17 @@ import (
 )
 
 const DefaultMinerFee = 5000
-var netParams = &chaincfg.TestNet3Params
 
 type CreateParams struct {
-	// WIF-format.
+	// WIF-format. Will be omitted if PrivateKeys are specified.
 	PrivateKey string
+	// If Amount is specified the remainder will be sent to the first private key.
+	PrivateKeys []string
 	// Bitcoin address of the receiver.
 	Destination        string
-	// In satoshi, zero value is rejected. Can be omitted if SendAll is true.
+	// Measured in satoshi. Will be omitted if SendAll is true.
 	Amount int64
-	// if true, it sends all satoshi.
+	// if true, all satoshi will be sent.
 	SendAll bool
 	// In satoshi, defaults to DefaultMinerFee.
 	MinerFee int64
@@ -34,9 +34,12 @@ type CreateParams struct {
 	// defaults to addressinfo.FetchFromBlockcypher.
 	Fetch addressinfo.Fetch
 
-	sourceAddr string
-	sourcePayAddr []byte
+	pkInfos []privateKeyInfo
 	destinationPayAddr []byte
+}
+
+func (cp CreateParams) FullCost() int64 {
+	return cp.Amount + cp.MinerFee
 }
 
 func Create(params CreateParams) (string, error) {
@@ -45,76 +48,32 @@ func Create(params CreateParams) (string, error) {
 		return "", err
 	}
 
-	btcAddr, err := params.Fetch(params.sourceAddr, params.Net)
-	if err != nil {
-		return "", err
-	}
-	if len(btcAddr.UTXOs) == 0 {
-		return "", fmt.Errorf("no utxos available on your address")
-	}
-	if params.Amount + params.MinerFee > btcAddr.Balance {
-		return "", fmt.Errorf("not enough satishi, balance=%d, fee+amount=%d", btcAddr.Balance, params.Amount + params.MinerFee)
-	}
-
-
-	var utxosToSpend []addressinfo.UTXO
-	var balanceToSpend int64
-	if params.SendAll {
-		utxosToSpend, balanceToSpend = btcAddr.UTXOs, btcAddr.Balance
-	} else {
-		utxosToSpend, balanceToSpend = chooseUTXOs(btcAddr.UTXOs, params.Amount+DefaultMinerFee)
-	}
-
-	// creating a new bitcoin transaction, different sections of the tx, including
-	// input list (contain UTXOs) and outputlist (contain destination address and usually our address)
-	// in next steps, sections will be field and pass to sign
-	redeemTx := wire.NewMsgTx(wire.TxVersion)
-
-	for _, u := range utxosToSpend {
-		utxoHash, err := chainhash.NewHashFromStr(u.TxID)
-		if err != nil {
-			return "", err
-		}
-		outPoint := wire.NewOutPoint(utxoHash, u.SourceOutIdx)
-		txIn := wire.NewTxIn(outPoint, nil, nil)
-		redeemTx.AddTxIn(txIn)
-	}
-
-	// adding the destination address and the amount to
-	// the transaction as output
-	if params.SendAll && params.Amount+params.MinerFee == balanceToSpend {
-		redeemTx.AddTxOut(wire.NewTxOut(balanceToSpend-params.MinerFee, params.destinationPayAddr))
-	} else {
-		redeemTx.AddTxOut(wire.NewTxOut(params.Amount, params.destinationPayAddr))
-		redeemTx.AddTxOut(wire.NewTxOut(balanceToSpend-params.Amount-params.MinerFee, params.sourcePayAddr))
-	}
-
-	err = SignTx(params.PrivateKey, utxosToSpend, redeemTx)
+	addrs, err := getAddressesToWithdrawFrom(params)
 	if err != nil {
 		return "", err
 	}
 
-	var signedTx bytes.Buffer
-	err = redeemTx.Serialize(&signedTx)
+	tx := wire.NewMsgTx(wire.TxVersion)
+
+	satoshiRemainder, err := addUTXOsToTxInputs(tx, addrs, params)
 	if err != nil {
 		return "", err
 	}
 
-	hexSignedTx := hex.EncodeToString(signedTx.Bytes())
+	addTxOutputs(tx, params, satoshiRemainder, addrs)
 
-	return hexSignedTx, nil
+	err = signTx(tx, addrs)
+	if err != nil {
+		return "", err
+	}
+
+	return hexEncodeTx(tx)
 }
 
 func checkCreateParams(p CreateParams) (CreateParams, error){
 	if p.Amount == 0 && !p.SendAll {
 		return CreateParams{}, fmt.Errorf("amount of satoshi is not specified")
 	}
-
-	destinationPayAddr, err := payAddress(p.Destination)
-	if err != nil {
-		return CreateParams{}, fmt.Errorf("wrong destination: %v", err)
-	}
-	p.destinationPayAddr = destinationPayAddr
 
 	if p.MinerFee == 0 {
 		p.MinerFee = DefaultMinerFee
@@ -126,19 +85,124 @@ func checkCreateParams(p CreateParams) (CreateParams, error){
 		p.Fetch = addressinfo.FetchFromBlockcypher
 	}
 
-	sourceAddr, err := wallet.AddressFromPrivateKey(p.PrivateKey, p.Net)
+	destinationPayAddr, err := toPayAddress(p.Destination, p.Net)
 	if err != nil {
-		return CreateParams{}, err
+		return CreateParams{}, fmt.Errorf("wrong destination: %v", err)
 	}
-	p.sourceAddr = sourceAddr
+	p.destinationPayAddr = destinationPayAddr
 
-	sourcePayAddr, err := payAddress(sourceAddr)
-	if err != nil {
-		return CreateParams{}, err
+	if len(p.PrivateKeys) > 0 {
+		for _, key := range p.PrivateKeys {
+			pkInfo, err := toPkInfo(key, p.Net)
+			if err != nil {
+				return CreateParams{}, fmt.Errorf("one of the private keys is malformed: %s", err)
+			}
+			p.pkInfos = append(p.pkInfos, pkInfo)
+		}
+	} else if p.PrivateKey != "" {
+		pkInfo, err := toPkInfo(p.PrivateKey, p.Net)
+		if err != nil {
+			return CreateParams{}, err
+		}
+		p.pkInfos = []privateKeyInfo{pkInfo}
+	} else {
+		return CreateParams{}, fmt.Errorf("must specify either PrivateKey or PrivateKeys: %v", err)
 	}
-	p.sourcePayAddr = sourcePayAddr
 
 	return p, nil
+}
+
+type address struct {
+	addressinfo.Address
+	privateKey string
+}
+
+func getAddressesToWithdrawFrom(params CreateParams) ([]address, error){
+	var addrsToWithdrawFrom []address
+	var satoshiSum int64
+	for _, pkInfo := range params.pkInfos {
+		addr, err := params.Fetch(pkInfo.address, params.Net)
+		if err != nil {
+			return nil, err
+		}
+		addrsToWithdrawFrom = append(addrsToWithdrawFrom, address{Address: addr, privateKey: pkInfo.key})
+		satoshiSum += addr.Balance
+		if !params.SendAll && satoshiSum > params.FullCost() {
+			return addrsToWithdrawFrom, nil
+		}
+	}
+	if params.SendAll {
+		return addrsToWithdrawFrom, nil
+	} else {
+		return nil, fmt.Errorf("not enough satoshi to send, amount+fee=%d, balance=%d", params.FullCost(), satoshiSum)
+	}
+}
+
+func addUTXOsToTxInputs(tx *wire.MsgTx, addrs []address, params CreateParams,) (satoshiRemainder int64, err error) {
+	amountLeftToRedeem := params.FullCost()
+	for i, addr := range addrs {
+		isLastAddr := i == len(addrs)-1
+		if isLastAddr && !params.SendAll {
+			lastUTXOs, theirBalance := chooseUTXOs(addr.UTXOs, amountLeftToRedeem)
+			satoshiRemainder = theirBalance - amountLeftToRedeem
+			err := addInputs(tx, lastUTXOs)
+			return satoshiRemainder, err
+		}
+		err := addInputs(tx, addr.UTXOs)
+		if err != nil {
+			return 0, err
+		}
+		amountLeftToRedeem -= addr.Balance
+	}
+	return satoshiRemainder, nil
+}
+
+func addInputs(tx *wire.MsgTx, utxos []addressinfo.UTXO) error {
+	for _, utxo := range utxos {
+		utxoHash, err := chainhash.NewHashFromStr(utxo.TxID)
+		if err != nil {
+			return err
+		}
+		outPoint := wire.NewOutPoint(utxoHash, utxo.TxOutIdx)
+		txIn := wire.NewTxIn(outPoint, nil, nil)
+		tx.AddTxIn(txIn)
+	}
+	return nil
+}
+
+func addTxOutputs(tx *wire.MsgTx, params CreateParams, satoshiRemainder int64, addrs []address) {
+	if params.SendAll || satoshiRemainder == 0 {
+		fullBalance := calcBalanceOfAddresses(addrs)
+		tx.AddTxOut(wire.NewTxOut(fullBalance-params.MinerFee, params.destinationPayAddr))
+	} else {
+		tx.AddTxOut(wire.NewTxOut(params.Amount, params.destinationPayAddr))
+		tx.AddTxOut(wire.NewTxOut(satoshiRemainder, params.pkInfos[0].payAddress))
+	}
+}
+
+type privateKeyInfo struct {
+	key string
+	address string
+	payAddress []byte
+}
+
+func toPkInfo(privKey string, net netchain.Net) (privateKeyInfo, error) {
+	addr, err := wallet.AddressFromPrivateKey(privKey, net)
+	if err != nil {
+		return privateKeyInfo{}, err
+	}
+	payAddress, err := toPayAddress(addr, net)
+	if err != nil {
+		return privateKeyInfo{}, err
+	}
+	return privateKeyInfo{key: privKey, address: addr, payAddress: payAddress}, nil
+}
+
+func calcBalanceOfAddresses(addresses []address) (balance int64) {
+	for _, a := range addresses {
+		balance += a.Balance
+	}
+	return
 }
 
 func chooseUTXOs(utxos []addressinfo.UTXO, amountToSend int64) (toSpend []addressinfo.UTXO, balance int64) {
@@ -157,9 +221,9 @@ func chooseUTXOs(utxos []addressinfo.UTXO, amountToSend int64) (toSpend []addres
 	panic("address doesn't have enough bitcoins for transfer")
 }
 
-func payAddress(destination string) ([]byte, error) {
-	// extracting destination address as []byte from function argument (destination string)
-	destinationAddr, err := btcutil.DecodeAddress(destination, netParams)
+func toPayAddress(address string, net netchain.Net) ([]byte, error) {
+	// extracting address as []byte from function argument
+	destinationAddr, err := btcutil.DecodeAddress(address, net.GetBtcdNetParams())
 	if err != nil {
 		return nil, err
 	}
@@ -171,29 +235,35 @@ func payAddress(destination string) ([]byte, error) {
 	return destinationAddrByte, nil
 }
 
-func SignTx(privKey string, utxoToSpend []addressinfo.UTXO, redeemTx *wire.MsgTx) error {
+func signTx(tx *wire.MsgTx, addresses []address) error {
 
-	wif, err := btcutil.DecodeWIF(privKey)
-	if err != nil {
-		return err
+	type utxoWithKey struct {
+		addressinfo.UTXO
+		wif *btcutil.WIF
 	}
 
-	utxoToSpendMap := make(map[string]addressinfo.UTXO)
-	for _, u := range utxoToSpend {
-		h, err := chainhash.NewHashFromStr(u.TxID)
+	utxosToSpendMap := make(map[string]utxoWithKey)
+	for _, a := range addresses {
+		wif, err := btcutil.DecodeWIF(a.privateKey)
 		if err != nil {
-			return fmt.Errorf("signing transaction failed, could compute hash utxo=%v", u)
+			return err
 		}
-		utxoToSpendMap[h.String()] = u
+		for _, u := range a.UTXOs {
+			h, err := chainhash.NewHashFromStr(u.TxID)
+			if err != nil {
+				return fmt.Errorf("signing transaction failed, could compute hash utxo=%v", u)
+			}
+			utxosToSpendMap[h.String()] = utxoWithKey{UTXO: u, wif: wif}
+		}
 	}
 
-	for i, in := range redeemTx.TxIn {
-		utxoOfIn := utxoToSpendMap[in.PreviousOutPoint.Hash.String()]
+	for i, in := range tx.TxIn {
+		utxoOfIn := utxosToSpendMap[in.PreviousOutPoint.Hash.String()]
 		sourcePkString, err := hex.DecodeString(utxoOfIn.Pbscript)
 		if err != nil {
 			return err
 		}
-		signature, err := txscript.SignatureScript(redeemTx, i, sourcePkString, txscript.SigHashAll, wif.PrivKey, false)
+		signature, err := txscript.SignatureScript(tx, i, sourcePkString, txscript.SigHashAll, utxoOfIn.wif.PrivKey, false)
 		if err != nil {
 			return err
 		}
@@ -201,4 +271,28 @@ func SignTx(privKey string, utxoToSpend []addressinfo.UTXO, redeemTx *wire.MsgTx
 	}
 
 	return nil
+}
+
+func hexEncodeTx(tx *wire.MsgTx) (string, error) {
+	var txBytes bytes.Buffer
+	err := tx.Serialize(&txBytes)
+	if err != nil {
+		return "", err
+	}
+
+	hexSignedTx := hex.EncodeToString(txBytes.Bytes())
+	return hexSignedTx, nil
+}
+
+func hexDecodeTx(rawTx string) (*wire.MsgTx, error) {
+	txBytes, err := hex.DecodeString(rawTx)
+	if err != nil {
+		return nil, err
+	}
+	tx := wire.NewMsgTx(wire.TxVersion)
+	err = tx.Deserialize(bytes.NewReader(txBytes))
+	if err != nil {
+		return nil, err
+	}
+	return tx, nil
 }
