@@ -14,32 +14,51 @@ import (
 	"sort"
 )
 
-const DefaultMinerFee = 5000
+const defaultMinerFee = 5000
+// https://support.blockchain.com/hc/en-us/articles/210354003-What-is-the-minimum-amount-I-can-send-
+const minSatoshiToSend = 546
 
 type CreateParams struct {
 	// WIF-format. Will be omitted if PrivateKeys are specified.
 	PrivateKey string
-	// If Amount is specified the remainder will be sent to the first private key.
+	// Iteratively includes each key in transaction until the full amount can be transferred.
+	// The remainder of bitcoins will be sent to the first private key.
 	PrivateKeys []string
-	// Bitcoin address of the receiver.
-	Destination        string
-	// Measured in satoshi. Will be omitted if SendAll is true.
+	// Bitcoin address of the receiver. Amount or SendAll must be set. Will be omitted if Destinations are specified.
+	Destination string
+	// Parameter for Destination. Measured in satoshi. Will be omitted if SendAll is true.
 	Amount int64
-	// if true, all satoshi will be sent.
+	Destinations []Destination
+	// If true, all satoshi will be sent. Only works if you specified only one destination.
 	SendAll bool
-	// In satoshi, defaults to DefaultMinerFee.
+	// In satoshi, defaults to defaultMinerFee.
 	MinerFee int64
 	// defaults to netchain.MainNet.
 	Net netchain.Net
 	// defaults to addressinfo.FetchFromBlockcypher.
 	Fetch addressinfo.Fetch
 
-	pkInfos []privateKeyInfo
-	destinationPayAddr []byte
+	pkInfos   []privateKeyInfo
+	destInfos []destinationInfo
 }
 
-func (cp CreateParams) FullCost() int64 {
-	return cp.Amount + cp.MinerFee
+type Destination struct {
+	// Bitcoin address of one of the receivers.
+	Address string
+	// Measured in satoshi.
+	Amount int64
+}
+
+func (cp CreateParams) fullCost() int64 {
+	return cp.fullAmount() + cp.MinerFee
+}
+
+func (cp CreateParams) fullAmount() int64 {
+	var result int64
+	for _, info := range cp.destInfos {
+		result += info.Amount
+	}
+	return result
 }
 
 func Create(params CreateParams) (string, error) {
@@ -70,13 +89,9 @@ func Create(params CreateParams) (string, error) {
 	return hexEncodeTx(tx)
 }
 
-func checkCreateParams(p CreateParams) (CreateParams, error){
-	if p.Amount == 0 && !p.SendAll {
-		return CreateParams{}, fmt.Errorf("amount of satoshi is not specified")
-	}
-
+func checkCreateParams(p CreateParams) (CreateParams, error) {
 	if p.MinerFee == 0 {
-		p.MinerFee = DefaultMinerFee
+		p.MinerFee = defaultMinerFee
 	}
 	if p.Net == "" {
 		p.Net = netchain.MainNet
@@ -85,11 +100,41 @@ func checkCreateParams(p CreateParams) (CreateParams, error){
 		p.Fetch = addressinfo.FetchFromBlockcypher
 	}
 
-	destinationPayAddr, err := toPayAddress(p.Destination, p.Net)
-	if err != nil {
-		return CreateParams{}, fmt.Errorf("wrong destination: %v", err)
+	if len(p.Destinations) == 0 {
+		if p.Destination == "" {
+			return CreateParams{}, fmt.Errorf("destination must be specified")
+		}
+		if p.Amount < minSatoshiToSend && !p.SendAll {
+			return CreateParams{}, fmt.Errorf("amount of satoshi can't be less than %d", minSatoshiToSend)
+		}
+		payAddress, err := toPayAddress(p.Destination, p.Net)
+		if err != nil {
+			return CreateParams{}, err
+		}
+		p.destInfos = []destinationInfo{{
+			Destination: Destination{Address: p.Destination, Amount: p.Amount},
+			payAddress:  payAddress,
+		}}
+	} else {
+		if len(p.Destinations) > 1 && p.SendAll {
+			return CreateParams{}, fmt.Errorf("SendAll works with only one destination")
+		}
+		var fullAmount int64
+		var dInfos []destinationInfo
+		for _, d := range p.Destinations {
+			fullAmount += d.Amount
+			info, err := toDestInfo(d, p.Net)
+			if err != nil {
+				return CreateParams{}, err
+			}
+			dInfos = append(dInfos, info)
+		}
+		sendAllToOneDest := len(dInfos) == 1 && p.SendAll
+		if fullAmount < minSatoshiToSend && !sendAllToOneDest {
+			return CreateParams{}, fmt.Errorf("full amount of satoshi can't be less than %d", minSatoshiToSend)
+		}
+		p.destInfos = dInfos
 	}
-	p.destinationPayAddr = destinationPayAddr
 
 	if len(p.PrivateKeys) > 0 {
 		for _, key := range p.PrivateKeys {
@@ -106,7 +151,7 @@ func checkCreateParams(p CreateParams) (CreateParams, error){
 		}
 		p.pkInfos = []privateKeyInfo{pkInfo}
 	} else {
-		return CreateParams{}, fmt.Errorf("must specify either PrivateKey or PrivateKeys: %v", err)
+		return CreateParams{}, fmt.Errorf("must specify either PrivateKey or PrivateKeys")
 	}
 
 	return p, nil
@@ -127,19 +172,19 @@ func getAddressesToWithdrawFrom(params CreateParams) ([]address, error){
 		}
 		addrsToWithdrawFrom = append(addrsToWithdrawFrom, address{Address: addr, privateKey: pkInfo.key})
 		satoshiSum += addr.Balance
-		if !params.SendAll && satoshiSum > params.FullCost() {
+		if !params.SendAll && satoshiSum > params.fullCost() {
 			return addrsToWithdrawFrom, nil
 		}
 	}
 	if params.SendAll {
 		return addrsToWithdrawFrom, nil
 	} else {
-		return nil, fmt.Errorf("not enough satoshi to send, amount+fee=%d, balance=%d", params.FullCost(), satoshiSum)
+		return nil, fmt.Errorf("not enough satoshi to send, amount+fee=%d, balance=%d", params.fullCost(), satoshiSum)
 	}
 }
 
 func addUTXOsToTxInputs(tx *wire.MsgTx, addrs []address, params CreateParams,) (satoshiRemainder int64, err error) {
-	amountLeftToRedeem := params.FullCost()
+	amountLeftToRedeem := params.fullCost()
 	for i, addr := range addrs {
 		isLastAddr := i == len(addrs)-1
 		if isLastAddr && !params.SendAll {
@@ -171,12 +216,16 @@ func addInputs(tx *wire.MsgTx, utxos []addressinfo.UTXO) error {
 }
 
 func addTxOutputs(tx *wire.MsgTx, params CreateParams, satoshiRemainder int64, addrs []address) {
-	if params.SendAll || satoshiRemainder == 0 {
+	if params.SendAll {
 		fullBalance := calcBalanceOfAddresses(addrs)
-		tx.AddTxOut(wire.NewTxOut(fullBalance-params.MinerFee, params.destinationPayAddr))
+		tx.AddTxOut(wire.NewTxOut(fullBalance-params.MinerFee, params.destInfos[0].payAddress))
 	} else {
-		tx.AddTxOut(wire.NewTxOut(params.Amount, params.destinationPayAddr))
-		tx.AddTxOut(wire.NewTxOut(satoshiRemainder, params.pkInfos[0].payAddress))
+		for _, info := range params.destInfos {
+			tx.AddTxOut(wire.NewTxOut(info.Amount, info.payAddress))
+		}
+		if satoshiRemainder > 0 {
+			tx.AddTxOut(wire.NewTxOut(satoshiRemainder, params.pkInfos[0].payAddress))
+		}
 	}
 }
 
@@ -196,6 +245,22 @@ func toPkInfo(privKey string, net netchain.Net) (privateKeyInfo, error) {
 		return privateKeyInfo{}, err
 	}
 	return privateKeyInfo{key: privKey, address: addr, payAddress: payAddress}, nil
+}
+
+type destinationInfo struct {
+	Destination
+	payAddress []byte
+}
+
+func toDestInfo(d Destination, net netchain.Net) (destinationInfo, error) {
+	payAddress, err := toPayAddress(d.Address, net)
+	if err != nil {
+		return destinationInfo{}, err
+	}
+	return destinationInfo{
+		Destination: d,
+		payAddress:  payAddress,
+	}, err
 }
 
 func calcBalanceOfAddresses(addresses []address) (balance int64) {
