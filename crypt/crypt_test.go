@@ -6,7 +6,8 @@ import (
 	"testing"
 )
 
-func TestEncryptDecrypt(t *testing.T) {	text := "91fPLgXt3tJPZGyDSLEFnD4btsZ9UZ86ibUtShVPsPMJxP15qJP"
+func TestEncryptDecrypt(t *testing.T) {
+	text := "91fPLgXt3tJPZGyDSLEFnD4btsZ9UZ86ibUtShVPsPMJxP15qJP"
 	key := "sixteenbytesword"
 	encryptedFilepath := "./encypted-private-keys"
 	got := Encrypt(text, key)
@@ -24,5 +25,4 @@ func TestEncryptDecrypt(t *testing.T) {	text := "91fPLgXt3tJPZGyDSLEFnD4btsZ9UZ8
 	if Decrypt(string(gotFile), key) != text {
 		log.Fatal("not equal")
 	}
-
 }
