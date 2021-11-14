@@ -61,7 +61,7 @@ func main() {
 **For testing purposes** I used `netchain.TestNet`. If you want to send real bitcoins to blockchain you need to specify BTC_API_KEY env var for blockcypher or you could pass your own txutil.CreateParams.Fetch function to txutil.Create.
 
 ---   
-#### More options
+### More options
 `txutil.CreateParams`:
 
 | Field         | Type                 | Usage  |
@@ -69,4 +69,5 @@ func main() {
 | PrivateKeys  | []string              | send your bitcoins from multiple wallets |
 | Destinations | []txutil.Destination  | send your bitcoins to multiple addresses |
 | SendAll      | bool                  | send all your bitcoins from your private key or keys, but it only works if you specified just one destination |
+
 For the full list of the transaction parameters look inside `txutil.CreateParams`.
