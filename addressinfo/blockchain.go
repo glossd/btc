@@ -45,7 +45,7 @@ func FetchFromBlockchain(address string, net netchain.Net) (Address, error) {
 			TxID:     output.TxID,
 			Pbscript: output.Script,
 			Balance:  output.Value,
-			TxOutIdx: uint32(output.TxOutputN),
+			TxOutIdx: output.TxOutputN,
 		})
 		balance += output.Value
 	}

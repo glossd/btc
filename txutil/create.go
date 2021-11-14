@@ -12,6 +12,7 @@ import (
 	"github.com/glossd/btc/netchain"
 	"github.com/glossd/btc/wallet"
 	"sort"
+	"strconv"
 )
 
 const defaultMinerFee = 5000
@@ -208,7 +209,7 @@ func addInputs(tx *wire.MsgTx, utxos []addressinfo.UTXO) error {
 		if err != nil {
 			return err
 		}
-		outPoint := wire.NewOutPoint(utxoHash, utxo.TxOutIdx)
+		outPoint := wire.NewOutPoint(utxoHash, uint32(utxo.TxOutIdx))
 		txIn := wire.NewTxIn(outPoint, nil, nil)
 		tx.AddTxIn(txIn)
 	}
@@ -301,7 +302,6 @@ func toPayAddress(address string, net netchain.Net) ([]byte, error) {
 }
 
 func signTx(tx *wire.MsgTx, addresses []address) error {
-
 	type utxoWithKey struct {
 		addressinfo.UTXO
 		wif *btcutil.WIF
@@ -318,12 +318,12 @@ func signTx(tx *wire.MsgTx, addresses []address) error {
 			if err != nil {
 				return fmt.Errorf("signing transaction failed, could compute hash utxo=%v", u)
 			}
-			utxosToSpendMap[h.String()] = utxoWithKey{UTXO: u, wif: wif}
+			utxosToSpendMap[h.String() + strconv.Itoa(u.TxOutIdx)] = utxoWithKey{UTXO: u, wif: wif}
 		}
 	}
 
 	for i, in := range tx.TxIn {
-		utxoOfIn := utxosToSpendMap[in.PreviousOutPoint.Hash.String()]
+		utxoOfIn := utxosToSpendMap[in.PreviousOutPoint.Hash.String() + strconv.Itoa(int(in.PreviousOutPoint.Index))]
 		sourcePkString, err := hex.DecodeString(utxoOfIn.Pbscript)
 		if err != nil {
 			return err

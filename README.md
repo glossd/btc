@@ -19,6 +19,8 @@ func main() {
 	fmt.Printf("Private Key: %s\nBitcoin address: %s\n", privateKey, address)
 }
 ```
+If you just started learning about bitcoins and blockchain, you probably **don't have any testnet bitcoins**, wondering where I can get some.
+People on [bitcoin.stackexchange](https://bitcoin.stackexchange.com/questions/17690/is-there-any-where-to-get-free-testnet-bitcoins) provided a lot of links.    
 
 ## Sending transaction
 First we need to create a transaction then broadcast it to blockchain.  
@@ -59,7 +61,12 @@ func main() {
 **For testing purposes** I used `netchain.TestNet`. If you want to send real bitcoins to blockchain you need to specify BTC_API_KEY env var for blockcypher or you could pass your own txutil.CreateParams.Fetch function to txutil.Create.
 
 ---   
-You can send your bitcoins from multiple wallets by specifying `CreateParams.PrivateKeys`, an array of private keys.  
-If you specified only one destination address you can set `CreateParams.SendAll` to `true` to send all your bitcoins from your private key or keys.
-You can also send your bitcoins to multiple addresses by specifying `CreateParams.Destinations`.  
-For the full list of transaction parameters look inside `txutil.CreateParams`.
+#### More options
+`txutil.CreateParams`:
+
+| Field         | Type                 | Usage  |
+|:-------------:|:--------------------:|------- |
+| PrivateKeys  | []string              | send your bitcoins from multiple wallets |
+| Destinations | []txutil.Destination  | send your bitcoins to multiple addresses |
+| SendAll      | bool                  | send all your bitcoins from your private key or keys, but it only works if you specified just one destination |
+For the full list of the transaction parameters look inside `txutil.CreateParams`.

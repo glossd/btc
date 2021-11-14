@@ -49,8 +49,8 @@ func TestCreate_SendAll(t *testing.T) {
 
 func TestCreate_MultiplePrivateKeys(t *testing.T) {
 	rawTx, err := Create(CreateParams{
-		PrivateKeys: []string{privateKey1, "cMvRbsVJKjRkZTV7tosWEYEu1x8tQcnLEbC64RiKwPeeEz29j8QZ"},
-		Destination: "mwRL1TpsRSFy5KXbxEd2KrHiD16VvbbAdj",
+		PrivateKeys: []string{privateKey1, privateKey2},
+		Destination: destination3,
 		SendAll: true,
 		Net: netchain.TestNet,
 	})

@@ -11,7 +11,7 @@ type UTXO struct {
 	TxID     string
 	Pbscript string
 	Balance  int64
-	TxOutIdx uint32
+	TxOutIdx int
 }
 
 type Fetch func(address string, net netchain.Net) (Address, error)
