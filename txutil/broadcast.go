@@ -6,6 +6,7 @@ import (
 	"os"
 )
 
+// Returns the hash of the broadcasted transaction.
 func Broadcast(rawTx string, net netchain.Net) (string, error) {
 	btc := gobcy.API{Token: os.Getenv("BTC_API_KEY"), Coin: "btc", Chain: net.GetBlockcypherChain()}
 	tx, err := btc.PushTX(rawTx)

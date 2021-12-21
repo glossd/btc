@@ -17,3 +17,8 @@ func AddressFromPrivateKey(privKey string, net netchain.Net) (string, error) {
 	}
 	return addr.EncodeAddress(), nil
 }
+
+func IsAddressValid(address string, net netchain.Net) bool {
+	_, err := btcutil.DecodeAddress(address, net.GetBtcdNetParams())
+	return err == nil
+}
