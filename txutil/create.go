@@ -279,7 +279,7 @@ func chooseUTXOs(utxos []addressinfo.UTXO, amountToSend int64) (toSpend []addres
 	var accBalance int64
 	for i, u := range utxos {
 		accBalance += u.Balance
-		if accBalance > amountToSend {
+		if accBalance >= amountToSend {
 			return utxos[:i+1], accBalance
 		}
 	}
