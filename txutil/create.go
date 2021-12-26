@@ -173,7 +173,7 @@ func getAddressesToWithdrawFrom(params CreateParams) ([]address, error){
 		}
 		addrsToWithdrawFrom = append(addrsToWithdrawFrom, address{Address: addr, privateKey: pkInfo.key})
 		satoshiSum += addr.Balance
-		if !params.SendAll && satoshiSum > params.fullCost() {
+		if !params.SendAll && satoshiSum >= params.fullCost() {
 			return addrsToWithdrawFrom, nil
 		}
 	}

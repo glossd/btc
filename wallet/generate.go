@@ -18,6 +18,11 @@ func New(net netchain.Net) (privateKeyWif, bitcoinAddress string) {
 	return wif.String(), addr.EncodeAddress()
 }
 
+func NewAddress(net netchain.Net) string {
+	_, address := New(net)
+	return address
+}
+
 func check(err error) {
 	if err != nil {
 		log.Fatal(err)
