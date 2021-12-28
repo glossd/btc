@@ -1,7 +1,7 @@
 package txutil
 
 import (
-	"fmt"
+	"github.com/btcsuite/btcd/wire"
 	"github.com/glossd/btc/addressinfo"
 	"github.com/glossd/btc/netchain"
 	"github.com/stretchr/testify/assert"
@@ -10,69 +10,90 @@ import (
 
 const privateKey1 = "932u6Q4xEC9UYRb3rS2BWrSpSPEt5KaU8NNP7EWy7zSkWmfBiGe"
 const privateKey2 = "cMvRbsVJKjRkZTV7tosWEYEu1x8tQcnLEbC64RiKwPeeEz29j8QZ"
+const privateKey3 = "93UVjiGYyB6q16iMPuKjYePdLesaYvdMyP3EjE1PjZEqzd456h1"
+// destination of each private key
 const destination1 = "mgFv6afUVhrdd3D6mY2iyWzHVk5b64qTok"
 const destination2 = "n4kkk9H2jGj7t8LA4vxK4DHM7Lq95VaEXC"
 const destination3 = "mwRL1TpsRSFy5KXbxEd2KrHiD16VvbbAdj"
 
-func TestCreate(t *testing.T) {
-	rawTx, err := Create(CreateParams{
-		PrivateKey:  privateKey1,
-		Destination: destination2,
-		Amount:      500000,
-		Net:         netchain.TestNet,
-	})
-	assert.Nil(t, err)
-
-	tx, err := hexDecodeTx(rawTx)
-	assert.Nil(t, err)
-	assert.Positive(t, len(tx.TxIn))
-	assert.EqualValues(t, 1, len(tx.TxOut))
-
-	fmt.Println("raw signed transaction is: ", rawTx)
-}
 
 func TestCreate_SendAll(t *testing.T) {
-	rawTx, err := Create(CreateParams{
-		PrivateKey: privateKey1,
-		Destination: destination2,
-		SendAll: true,
-		Net: netchain.TestNet,
+	t.Run("Through amount", func(t *testing.T) {
+		rawTx, err := Create(CreateParams{
+			PrivateKey:  privateKey1,
+			Destination: destination2,
+			Amount:      addressinfo.MockAddressBalance - defaultMinerFee,
+			Fetch: addressinfo.FetchMock,
+			Net:         netchain.TestNet,
+		})
+		assert.Nil(t, err)
+
+		tx := decodeTx(t, rawTx)
+		assert.EqualValues(t, 1, len(tx.TxIn))
+		assert.EqualValues(t, 1, len(tx.TxOut))
 	})
-	assert.Nil(t, err)
+	t.Run("SendAll flag true", func(t *testing.T) {
+		rawTx, err := Create(CreateParams{
+			PrivateKey: privateKey1,
+			Destination: destination2,
+			SendAll: true,
+			Fetch: addressinfo.FetchMock,
+			Net: netchain.TestNet,
+		})
+		assert.Nil(t, err)
 
-	tx, err := hexDecodeTx(rawTx)
-	assert.Nil(t, err)
-	assert.Positive(t, len(tx.TxIn))
-
-	fmt.Println("raw signed transaction is: ", rawTx)
+		tx := decodeTx(t, rawTx)
+		assert.EqualValues(t, 1, len(tx.TxIn))
+		assert.EqualValues(t, 1, len(tx.TxOut))
+	})
 }
 
 func TestCreate_MultiplePrivateKeys(t *testing.T) {
-	rawTx, err := Create(CreateParams{
-		PrivateKeys: []string{privateKey1, privateKey2},
-		Destination: destination3,
-		SendAll: true,
-		Net: netchain.TestNet,
-	})
-	assert.Nil(t, err)
+	t.Run("SendAll", func(t *testing.T) {
+		rawTx, err := Create(CreateParams{
+			PrivateKeys: []string{privateKey1, privateKey2},
+			Destination: destination3,
+			SendAll: true,
+			Fetch: addressinfo.FetchMock,
+			Net: netchain.TestNet,
+		})
+		assert.Nil(t, err)
 
-	tx, err := hexDecodeTx(rawTx)
-	assert.Nil(t, err)
-	assert.GreaterOrEqual(t, len(tx.TxIn), 2)
-	fmt.Println("raw signed transaction is: ", rawTx)
+		tx := decodeTx(t, rawTx)
+		assert.GreaterOrEqual(t, len(tx.TxIn), 2)
+	})
+	t.Run("WithRemainder", func(t *testing.T) {
+		amount := addressinfo.MockAddressBalance*3/2 - defaultMinerFee
+		rawTx, err := Create(CreateParams{
+			PrivateKeys: []string{privateKey1, privateKey2},
+			Destination: destination3,
+			Amount:      amount,
+			Fetch:       addressinfo.FetchMock,
+			Net:         netchain.TestNet,
+		})
+		assert.Nil(t, err)
+
+		tx := decodeTx(t, rawTx)
+		assert.EqualValues(t, 2, len(tx.TxIn))
+		assert.EqualValues(t, 2, len(tx.TxOut))
+		assert.EqualValues(t, amount, tx.TxOut[0].Value)
+		assert.EqualValues(t, addressinfo.MockAddressBalance/2, tx.TxOut[1].Value)
+		assert.EqualValues(t, tx.TxOut[1].PkScript, addressPkScript(t, destination2))
+	})
 }
+
+
 func TestCreate_ToMultipleDestinations(t *testing.T) {
 	rawTx, err := Create(CreateParams{
 		PrivateKey: privateKey1,
 		Destinations: []Destination{{Address: destination2, Amount: 200000}, {Address: destination3, Amount: 300000}},
+		Fetch: addressinfo.FetchMock,
 		Net: netchain.TestNet,
 	})
 	assert.Nil(t, err)
 
-	tx, err := hexDecodeTx(rawTx)
-	assert.Nil(t, err)
+	tx := decodeTx(t, rawTx)
 	assert.EqualValues(t, 3, len(tx.TxOut))
-	fmt.Println("raw signed transaction is: ", rawTx)
 }
 
 func TestCreate_Validation(t *testing.T) {
@@ -99,6 +120,7 @@ func TestCreate_Validation(t *testing.T) {
 
 	for _, test := range shouldntPass {
 		test.input.Net = netchain.TestNet
+		test.input.Fetch = addressinfo.FetchMock
 		_, err := Create(test.input)
 		assert.NotNil(t, err)
 	}
@@ -118,3 +140,17 @@ func TestCreate_Validation(t *testing.T) {
 		assert.Nil(t, err)
 	}
 }
+
+func decodeTx(t *testing.T, rawTx string) *wire.MsgTx {
+	tx, err := hexDecodeTx(rawTx)
+	assert.Nil(t, err)
+	return tx
+}
+
+func addressPkScript(t *testing.T, address string) []byte {
+	script, err := addressToPkScript(address, netchain.TestNet)
+	assert.Nil(t, err)
+	return script
+}
+
+

@@ -23,7 +23,7 @@ type CreateParams struct {
 	// WIF-format. Will be omitted if PrivateKeys are specified.
 	PrivateKey string
 	// Iteratively includes each key in transaction until the full amount can be transferred.
-	// The remainder of bitcoins will be sent to the first private key.
+	// If the last used private key had some satoshi left, that remainder will be sent to that last private key.
 	PrivateKeys []string
 	// Bitcoin address of the receiver. Amount or SendAll must be set. Will be omitted if Destinations are specified.
 	Destination string
@@ -108,13 +108,13 @@ func checkCreateParams(p CreateParams) (CreateParams, error) {
 		if p.Amount < minSatoshiToSend && !p.SendAll {
 			return CreateParams{}, fmt.Errorf("amount of satoshi can't be less than %d", minSatoshiToSend)
 		}
-		payAddress, err := toPayAddress(p.Destination, p.Net)
+		payAddress, err := addressToPkScript(p.Destination, p.Net)
 		if err != nil {
 			return CreateParams{}, err
 		}
 		p.destInfos = []destinationInfo{{
 			Destination: Destination{Address: p.Destination, Amount: p.Amount},
-			payAddress:  payAddress,
+			pkScript:    payAddress,
 		}}
 	} else {
 		if len(p.Destinations) > 1 && p.SendAll {
@@ -219,21 +219,21 @@ func addInputs(tx *wire.MsgTx, utxos []addressinfo.UTXO) error {
 func addTxOutputs(tx *wire.MsgTx, params CreateParams, satoshiRemainder int64, addrs []address) {
 	if params.SendAll {
 		fullBalance := calcBalanceOfAddresses(addrs)
-		tx.AddTxOut(wire.NewTxOut(fullBalance-params.MinerFee, params.destInfos[0].payAddress))
+		tx.AddTxOut(wire.NewTxOut(fullBalance-params.MinerFee, params.destInfos[0].pkScript))
 	} else {
 		for _, info := range params.destInfos {
-			tx.AddTxOut(wire.NewTxOut(info.Amount, info.payAddress))
+			tx.AddTxOut(wire.NewTxOut(info.Amount, info.pkScript))
 		}
 		if satoshiRemainder > 0 {
-			tx.AddTxOut(wire.NewTxOut(satoshiRemainder, params.pkInfos[0].payAddress))
+			tx.AddTxOut(wire.NewTxOut(satoshiRemainder, params.pkInfos[len(params.pkInfos)-1].pkScript))
 		}
 	}
 }
 
 type privateKeyInfo struct {
-	key string
-	address string
-	payAddress []byte
+	key      string
+	address  string
+	pkScript []byte
 }
 
 func toPkInfo(privKey string, net netchain.Net) (privateKeyInfo, error) {
@@ -241,26 +241,26 @@ func toPkInfo(privKey string, net netchain.Net) (privateKeyInfo, error) {
 	if err != nil {
 		return privateKeyInfo{}, err
 	}
-	payAddress, err := toPayAddress(addr, net)
+	pkScript, err := addressToPkScript(addr, net)
 	if err != nil {
 		return privateKeyInfo{}, err
 	}
-	return privateKeyInfo{key: privKey, address: addr, payAddress: payAddress}, nil
+	return privateKeyInfo{key: privKey, address: addr, pkScript: pkScript}, nil
 }
 
 type destinationInfo struct {
 	Destination
-	payAddress []byte
+	pkScript []byte
 }
 
 func toDestInfo(d Destination, net netchain.Net) (destinationInfo, error) {
-	payAddress, err := toPayAddress(d.Address, net)
+	pkScript, err := addressToPkScript(d.Address, net)
 	if err != nil {
 		return destinationInfo{}, err
 	}
 	return destinationInfo{
 		Destination: d,
-		payAddress:  payAddress,
+		pkScript:    pkScript,
 	}, err
 }
 
@@ -287,7 +287,7 @@ func chooseUTXOs(utxos []addressinfo.UTXO, amountToSend int64) (toSpend []addres
 	panic("address doesn't have enough bitcoins for transfer")
 }
 
-func toPayAddress(address string, net netchain.Net) ([]byte, error) {
+func addressToPkScript(address string, net netchain.Net) ([]byte, error) {
 	// extracting address as []byte from function argument
 	destinationAddr, err := btcutil.DecodeAddress(address, net.GetBtcdNetParams())
 	if err != nil {
