@@ -20,8 +20,12 @@ func (n Net) GetBtcdNetParams() *chaincfg.Params {
 
 func (n Net) GetBlockcypherChain() string {
 	switch n {
-	case MainNet: return "btc"
+	case MainNet: return "main"
 	case TestNet: return "test3"
 	default: panic(fmt.Sprintf("net chain '%s' is not supported", n))
 	}
+}
+
+func (n Net) String() string {
+	return string(n)
 }
