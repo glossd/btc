@@ -6,19 +6,24 @@ import (
 	"github.com/glossd/btc/netchain"
 )
 
-func AddressFromPrivateKey(privKey string, net netchain.Net) (string, error) {
-	wif, err := btcutil.DecodeWIF(privKey)
+func AddressFromWif(wifString string, net netchain.Net, compress bool) (string, error) {
+	wif, err := btcutil.DecodeWIF(wifString)
 	if err != nil {
-		return "", fmt.Errorf("couldn't decode private key")
+		return "", fmt.Errorf("couldn't decode WIF")
 	}
-	addr, err := btcutil.NewAddressPubKey(wif.PrivKey.PubKey().SerializeUncompressed(), net.GetBtcdNetParams())
-	if err != nil {
-		return "", fmt.Errorf("couldn't extract address from private key")
-	}
+	addr := GetBitcoinAddress(wif.PrivKey, net, compress)
 	return addr.EncodeAddress(), nil
 }
 
 func IsAddressValid(address string, net netchain.Net) bool {
 	_, err := btcutil.DecodeAddress(address, net.GetBtcdNetParams())
 	return err == nil
+}
+
+func GetFormat(compress bool) string {
+	format := "uncompressed"
+	if compress {
+		format = "compressed"
+	}
+	return format
 }

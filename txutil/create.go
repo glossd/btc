@@ -16,6 +16,7 @@ import (
 )
 
 const defaultMinerFee = 5000
+
 // https://support.blockchain.com/hc/en-us/articles/210354003-What-is-the-minimum-amount-I-can-send-
 const minSatoshiToSend = 546
 
@@ -28,7 +29,7 @@ type CreateParams struct {
 	// Bitcoin address of the receiver. Amount or SendAll must be set. Will be omitted if Destinations are specified.
 	Destination string
 	// Parameter for Destination. Measured in satoshi. Will be omitted if SendAll is true.
-	Amount int64
+	Amount       int64
 	Destinations []Destination
 	// If true, all satoshi will be sent. Only works if you specified only one destination.
 	SendAll bool
@@ -38,6 +39,8 @@ type CreateParams struct {
 	Net netchain.Net
 	// defaults to addressinfo.FetchFromBlockcypher.
 	Fetch addressinfo.Fetch
+	// Compressed or uncompressed format of WIF and public wif used to sign transaction
+	Compressed bool
 
 	pkInfos   []privateKeyInfo
 	destInfos []destinationInfo
@@ -82,7 +85,7 @@ func Create(params CreateParams) (string, error) {
 
 	addTxOutputs(tx, params, satoshiRemainder, addrs)
 
-	err = signTx(tx, addrs)
+	err = signTx(tx, addrs, params.Compressed)
 	if err != nil {
 		return "", err
 	}
@@ -139,14 +142,14 @@ func checkCreateParams(p CreateParams) (CreateParams, error) {
 
 	if len(p.PrivateKeys) > 0 {
 		for _, key := range p.PrivateKeys {
-			pkInfo, err := toPkInfo(key, p.Net)
+			pkInfo, err := toPkInfo(key, p.Net, p.Compressed)
 			if err != nil {
 				return CreateParams{}, fmt.Errorf("one of the private keys is malformed: %s", err)
 			}
 			p.pkInfos = append(p.pkInfos, pkInfo)
 		}
 	} else if p.PrivateKey != "" {
-		pkInfo, err := toPkInfo(p.PrivateKey, p.Net)
+		pkInfo, err := toPkInfo(p.PrivateKey, p.Net, p.Compressed)
 		if err != nil {
 			return CreateParams{}, err
 		}
@@ -160,10 +163,10 @@ func checkCreateParams(p CreateParams) (CreateParams, error) {
 
 type address struct {
 	addressinfo.Address
-	privateKey string
+	wif string
 }
 
-func getAddressesToWithdrawFrom(params CreateParams) ([]address, error){
+func getAddressesToWithdrawFrom(params CreateParams) ([]address, error) {
 	var addrsToWithdrawFrom []address
 	var satoshiSum int64
 	for _, pkInfo := range params.pkInfos {
@@ -171,7 +174,7 @@ func getAddressesToWithdrawFrom(params CreateParams) ([]address, error){
 		if err != nil {
 			return nil, err
 		}
-		addrsToWithdrawFrom = append(addrsToWithdrawFrom, address{Address: addr, privateKey: pkInfo.key})
+		addrsToWithdrawFrom = append(addrsToWithdrawFrom, address{Address: addr, wif: pkInfo.wif})
 		satoshiSum += addr.Balance
 		if !params.SendAll && satoshiSum >= params.fullCost() {
 			return addrsToWithdrawFrom, nil
@@ -184,7 +187,7 @@ func getAddressesToWithdrawFrom(params CreateParams) ([]address, error){
 	}
 }
 
-func addUTXOsToTxInputs(tx *wire.MsgTx, addrs []address, params CreateParams,) (satoshiRemainder int64, err error) {
+func addUTXOsToTxInputs(tx *wire.MsgTx, addrs []address, params CreateParams) (satoshiRemainder int64, err error) {
 	amountLeftToRedeem := params.fullCost()
 	for i, addr := range addrs {
 		isLastAddr := i == len(addrs)-1
@@ -231,13 +234,14 @@ func addTxOutputs(tx *wire.MsgTx, params CreateParams, satoshiRemainder int64, a
 }
 
 type privateKeyInfo struct {
-	key      string
-	address  string
-	pkScript []byte
+	wif        string
+	address    string
+	compressed bool
+	pkScript   []byte
 }
 
-func toPkInfo(privKey string, net netchain.Net) (privateKeyInfo, error) {
-	addr, err := wallet.AddressFromPrivateKey(privKey, net)
+func toPkInfo(wif string, net netchain.Net, compressed bool) (privateKeyInfo, error) {
+	addr, err := wallet.AddressFromWif(wif, net, compressed)
 	if err != nil {
 		return privateKeyInfo{}, err
 	}
@@ -245,7 +249,7 @@ func toPkInfo(privKey string, net netchain.Net) (privateKeyInfo, error) {
 	if err != nil {
 		return privateKeyInfo{}, err
 	}
-	return privateKeyInfo{key: privKey, address: addr, pkScript: pkScript}, nil
+	return privateKeyInfo{wif: wif, address: addr, compressed: compressed, pkScript: pkScript}, nil
 }
 
 type destinationInfo struct {
@@ -301,34 +305,34 @@ func addressToPkScript(address string, net netchain.Net) ([]byte, error) {
 	return destinationAddrByte, nil
 }
 
-func signTx(tx *wire.MsgTx, addresses []address) error {
+func signTx(tx *wire.MsgTx, addresses []address, compressed bool) error {
 	type utxoWithKey struct {
 		addressinfo.UTXO
 		wif *btcutil.WIF
 	}
 
 	utxosToSpendMap := make(map[string]utxoWithKey)
-	for _, a := range addresses {
-		wif, err := btcutil.DecodeWIF(a.privateKey)
+	for _, address := range addresses {
+		wif, err := btcutil.DecodeWIF(address.wif)
 		if err != nil {
 			return err
 		}
-		for _, u := range a.UTXOs {
-			h, err := chainhash.NewHashFromStr(u.TxID)
+		for _, utxo := range address.UTXOs {
+			h, err := chainhash.NewHashFromStr(utxo.TxID)
 			if err != nil {
-				return fmt.Errorf("signing transaction failed, could compute hash utxo=%v", u)
+				return fmt.Errorf("signing transaction failed, could compute hash utxo=%v", utxo)
 			}
-			utxosToSpendMap[h.String() + strconv.Itoa(u.TxOutIdx)] = utxoWithKey{UTXO: u, wif: wif}
+			utxosToSpendMap[h.String()+strconv.Itoa(utxo.TxOutIdx)] = utxoWithKey{UTXO: utxo, wif: wif}
 		}
 	}
 
 	for i, in := range tx.TxIn {
-		utxoOfIn := utxosToSpendMap[in.PreviousOutPoint.Hash.String() + strconv.Itoa(int(in.PreviousOutPoint.Index))]
+		utxoOfIn := utxosToSpendMap[in.PreviousOutPoint.Hash.String()+strconv.Itoa(int(in.PreviousOutPoint.Index))]
 		sourcePkString, err := hex.DecodeString(utxoOfIn.Pbscript)
 		if err != nil {
 			return err
 		}
-		signature, err := txscript.SignatureScript(tx, i, sourcePkString, txscript.SigHashAll, utxoOfIn.wif.PrivKey, false)
+		signature, err := txscript.SignatureScript(tx, i, sourcePkString, txscript.SigHashAll, utxoOfIn.wif.PrivKey, compressed)
 		if err != nil {
 			return err
 		}
