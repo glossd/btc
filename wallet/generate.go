@@ -22,7 +22,7 @@ func GetWallet(hexPriv string, net netchain.Net, compress bool) (wifString strin
 	privBytes, err := hex.DecodeString(hexPriv)
 	check(err)
 	priv, _ := btcec.PrivKeyFromBytes(btcec.S256(), privBytes)
-	wif, err := btcutil.NewWIF(priv, net.GetBtcdNetParams(), true)
+	wif, err := btcutil.NewWIF(priv, net.GetBtcdNetParams(), compress)
 	check(err)
 	addr := GetBitcoinAddress(priv, net, compress)
 	return wif.String(), addr.EncodeAddress()
