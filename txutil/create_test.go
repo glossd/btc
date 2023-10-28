@@ -11,11 +11,11 @@ import (
 const privateKey1 = "932u6Q4xEC9UYRb3rS2BWrSpSPEt5KaU8NNP7EWy7zSkWmfBiGe"
 const privateKey2 = "cMvRbsVJKjRkZTV7tosWEYEu1x8tQcnLEbC64RiKwPeeEz29j8QZ"
 const privateKey3 = "93UVjiGYyB6q16iMPuKjYePdLesaYvdMyP3EjE1PjZEqzd456h1"
+
 // destination of each private key
 const destination1 = "mgFv6afUVhrdd3D6mY2iyWzHVk5b64qTok"
 const destination2 = "n4kkk9H2jGj7t8LA4vxK4DHM7Lq95VaEXC"
 const destination3 = "mwRL1TpsRSFy5KXbxEd2KrHiD16VvbbAdj"
-
 
 func TestCreate_SendAll(t *testing.T) {
 	t.Run("Through amount", func(t *testing.T) {
@@ -23,7 +23,7 @@ func TestCreate_SendAll(t *testing.T) {
 			PrivateKey:  privateKey1,
 			Destination: destination2,
 			Amount:      addressinfo.MockAddressBalance - defaultMinerFee,
-			Fetch: addressinfo.FetchMock,
+			Fetch:       addressinfo.FetchMock,
 			Net:         netchain.TestNet,
 		})
 		assert.Nil(t, err)
@@ -34,11 +34,11 @@ func TestCreate_SendAll(t *testing.T) {
 	})
 	t.Run("SendAll flag true", func(t *testing.T) {
 		rawTx, err := Create(CreateParams{
-			PrivateKey: privateKey1,
+			PrivateKey:  privateKey1,
 			Destination: destination2,
-			SendAll: true,
-			Fetch: addressinfo.FetchMock,
-			Net: netchain.TestNet,
+			SendAll:     true,
+			Fetch:       addressinfo.FetchMock,
+			Net:         netchain.TestNet,
 		})
 		assert.Nil(t, err)
 
@@ -53,9 +53,9 @@ func TestCreate_MultiplePrivateKeys(t *testing.T) {
 		rawTx, err := Create(CreateParams{
 			PrivateKeys: []string{privateKey1, privateKey2},
 			Destination: destination3,
-			SendAll: true,
-			Fetch: addressinfo.FetchMock,
-			Net: netchain.TestNet,
+			SendAll:     true,
+			Fetch:       addressinfo.FetchMock,
+			Net:         netchain.TestNet,
 		})
 		assert.Nil(t, err)
 
@@ -82,13 +82,12 @@ func TestCreate_MultiplePrivateKeys(t *testing.T) {
 	})
 }
 
-
 func TestCreate_ToMultipleDestinations(t *testing.T) {
 	rawTx, err := Create(CreateParams{
-		PrivateKey: privateKey1,
+		PrivateKey:   privateKey1,
 		Destinations: []Destination{{Address: destination2, Amount: 200000}, {Address: destination3, Amount: 300000}},
-		Fetch: addressinfo.FetchMock,
-		Net: netchain.TestNet,
+		Fetch:        addressinfo.FetchMock,
+		Net:          netchain.TestNet,
 	})
 	assert.Nil(t, err)
 
@@ -152,5 +151,3 @@ func addressPkScript(t *testing.T, address string) []byte {
 	assert.Nil(t, err)
 	return script
 }
-
-
