@@ -8,9 +8,10 @@ import (
 
 func main() {
 	compress := false
+	net := netchain.TestNet
 	format := wallet.GetFormat(compress)
 	hexPriv := "your-key" // e.g. d84b85293493810f912754dd53192dac77c5e2b5e077b3d3233ef5683bda2d82
-	wif, address := wallet.GetWallet(hexPriv, netchain.TestNet, compress)
+	wif, address := wallet.GetWallet(hexPriv, net, compress)
 	fmt.Printf(
 		"Wallet initialized from private key.\n\n"+
 			"WIF: %s\n"+
