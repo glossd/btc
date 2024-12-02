@@ -16,6 +16,9 @@ import (
 )
 
 const defaultMinerFee = 5000
+const minerFeeSatoshisPerByte = 25
+const maxMinerFee = 50000
+
 // https://support.blockchain.com/hc/en-us/articles/210354003-What-is-the-minimum-amount-I-can-send-
 const minSatoshiToSend = 546
 
@@ -28,7 +31,7 @@ type CreateParams struct {
 	// Bitcoin address of the receiver. Amount or SendAll must be set. Will be omitted if Destinations are specified.
 	Destination string
 	// Parameter for Destination. Measured in satoshi. Will be omitted if SendAll is true.
-	Amount int64
+	Amount       int64
 	Destinations []Destination
 	// If true, all satoshi will be sent. Only works if you specified only one destination.
 	SendAll bool
@@ -73,6 +76,25 @@ func Create(params CreateParams) (string, error) {
 		return "", err
 	}
 
+	txHex, err := buildTx(params, addrs)
+	if err != nil {
+		return "", err
+	}
+
+	if params.MinerFee > 0 {
+		return txHex, nil
+	} else {
+		// calculating miner fee
+		params.MinerFee = int64(len([]byte(txHex)) * minerFeeSatoshisPerByte)
+		if params.MinerFee > maxMinerFee {
+			// preventing any possible losses
+			return "", fmt.Errorf("the maximum miner fee is reached, max=%d, got=%d", maxMinerFee)
+		}
+		return buildTx(params, addrs)
+	}
+}
+
+func buildTx(params CreateParams, addrs []address) (string, error) {
 	tx := wire.NewMsgTx(wire.TxVersion)
 
 	satoshiRemainder, err := addUTXOsToTxInputs(tx, addrs, params)
@@ -91,9 +113,6 @@ func Create(params CreateParams) (string, error) {
 }
 
 func checkCreateParams(p CreateParams) (CreateParams, error) {
-	if p.MinerFee == 0 {
-		p.MinerFee = defaultMinerFee
-	}
 	if p.Net == "" {
 		p.Net = netchain.MainNet
 	}
@@ -163,7 +182,7 @@ type address struct {
 	privateKey string
 }
 
-func getAddressesToWithdrawFrom(params CreateParams) ([]address, error){
+func getAddressesToWithdrawFrom(params CreateParams) ([]address, error) {
 	var addrsToWithdrawFrom []address
 	var satoshiSum int64
 	for _, pkInfo := range params.pkInfos {
@@ -184,7 +203,7 @@ func getAddressesToWithdrawFrom(params CreateParams) ([]address, error){
 	}
 }
 
-func addUTXOsToTxInputs(tx *wire.MsgTx, addrs []address, params CreateParams,) (satoshiRemainder int64, err error) {
+func addUTXOsToTxInputs(tx *wire.MsgTx, addrs []address, params CreateParams) (satoshiRemainder int64, err error) {
 	amountLeftToRedeem := params.fullCost()
 	for i, addr := range addrs {
 		isLastAddr := i == len(addrs)-1
@@ -318,12 +337,12 @@ func signTx(tx *wire.MsgTx, addresses []address) error {
 			if err != nil {
 				return fmt.Errorf("signing transaction failed, could compute hash utxo=%v", u)
 			}
-			utxosToSpendMap[h.String() + strconv.Itoa(u.TxOutIdx)] = utxoWithKey{UTXO: u, wif: wif}
+			utxosToSpendMap[h.String()+strconv.Itoa(u.TxOutIdx)] = utxoWithKey{UTXO: u, wif: wif}
 		}
 	}
 
 	for i, in := range tx.TxIn {
-		utxoOfIn := utxosToSpendMap[in.PreviousOutPoint.Hash.String() + strconv.Itoa(int(in.PreviousOutPoint.Index))]
+		utxoOfIn := utxosToSpendMap[in.PreviousOutPoint.Hash.String()+strconv.Itoa(int(in.PreviousOutPoint.Index))]
 		sourcePkString, err := hex.DecodeString(utxoOfIn.Pbscript)
 		if err != nil {
 			return err
