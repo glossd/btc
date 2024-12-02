@@ -58,7 +58,9 @@ func main() {
 ```
 *all the code can be found in the 'examples' folder.*
 
-**For testing purposes** I used `netchain.TestNet`. If you want to send real bitcoins to blockchain you need to specify BTC_API_KEY env var for blockcypher or you could pass your own txutil.CreateParams.Fetch function to txutil.Create.
+**For testing purposes** I used `netchain.TestNet`.
+If you want to send real bitcoins to blockchain you need to specify BTC_API_KEY env var for blockcypher or you could pass your own txutil.CreateParams.Fetch function to txutil.Create,
+refer to [examples/create-real-transaction](https://github.com/glossd/btc/blob/master/examples/create-real-transaction/main.go)
 
 ---   
 ### More options
