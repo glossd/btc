@@ -14,3 +14,11 @@ func TestFetchFromBlockchain(t *testing.T) {
 		assert.Positive(t, len(got.UTXOs))
 	})
 }
+
+func TestGetSatoshiPerByteFromBlockchain(t *testing.T) {
+	spb, err := GetSatoshiPerByteFromBlockchain(netchain.MainNet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Positive(t, spb)
+}
