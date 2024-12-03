@@ -41,6 +41,7 @@ func main() {
 		Destination: "address", // e.g. n4kkk9H2jGj7t8LA4vxK4DHM7Lq95VaEXC
 		Amount: 500000, // satoshi to send
 		Net: net,
+		MinerFee: 5000,
 	})
 	if err != nil {
 		panic(err)
@@ -65,20 +66,15 @@ Refer to [examples/create-real-transaction](https://github.com/glossd/btc/blob/m
 I use it to transfer real bitcoins. Here's my usual configuration.
 ```go
 txutil.CreateParams{
-		PrivateKey:  "your-wallet-private-key", // e.g. 932u6Q4xEC9UYRb3rS2BWrSpSPEt5KaU8NNP7EWy7zSkWmfBiGe
-		Destination: "address", // e.g. n4kkk9H2jGj7t8LA4vxK4DHM7Lq95VaEXC
-		SendAll:     true,
-		Net:         netchain.MainNet,
-		MinerFee:    5000, // If you make it too small, your transaction won't be picked up.
+    PrivateKey:  "your-wallet-private-key", // e.g. 932u6Q4xEC9UYRb3rS2BWrSpSPEt5KaU8NNP7EWy7zSkWmfBiGe
+    Destination: "address", // e.g. n4kkk9H2jGj7t8LA4vxK4DHM7Lq95VaEXC
+    SendAll:     true,
+    Net:         netchain.MainNet,
+    AutoMinerFee: true, // automatically calculates MinerFee
 }
 ```
 I rely on Blockcypher API to receive up-to-date information on the blockchain. You need to specify your own token with BTC_API_KEY env var.
 Or you could pass your own txutil.CreateParams.Fetch function to txutil.Create.
-
-### Miner's  fee
-If you don't know how much satoshi to give to the miners,
-omit MinerFee param and the library will calculate it depending on the number of bytes in the transaction (25 satoshi per byte).   
-
 
 ---   
 ### More options
