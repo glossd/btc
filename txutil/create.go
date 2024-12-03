@@ -15,7 +15,10 @@ import (
 	"strconv"
 )
 
-const defaultMinerFee = 5000
+const DefaultMinerFee = 5000
+
+const maxMinerFee = 50000
+
 // https://support.blockchain.com/hc/en-us/articles/210354003-What-is-the-minimum-amount-I-can-send-
 const minSatoshiToSend = 546
 
@@ -28,16 +31,20 @@ type CreateParams struct {
 	// Bitcoin address of the receiver. Amount or SendAll must be set. Will be omitted if Destinations are specified.
 	Destination string
 	// Parameter for Destination. Measured in satoshi. Will be omitted if SendAll is true.
-	Amount int64
+	Amount       int64
 	Destinations []Destination
 	// If true, all satoshi will be sent. Only works if you specified only one destination.
 	SendAll bool
-	// In satoshi, defaults to defaultMinerFee.
+	// In satoshi, defaults to DefaultMinerFee. Will be omitted if AutoMinerFee is true.
 	MinerFee int64
+	// Automatically calculates MinerFee. Will call an API addressinfo.GetSatoshiPerByte.
+	AutoMinerFee bool
 	// defaults to netchain.MainNet.
 	Net netchain.Net
 	// defaults to addressinfo.FetchFromBlockcypher.
 	Fetch addressinfo.Fetch
+	// defaults to addressinfo.GetSatoshiPerByteFromBlockchain.
+	GetSatoshiPerByte addressinfo.GetSatoshiPerByte
 
 	pkInfos   []privateKeyInfo
 	destInfos []destinationInfo
@@ -73,6 +80,30 @@ func Create(params CreateParams) (string, error) {
 		return "", err
 	}
 
+	txHex, err := buildTx(params, addrs)
+	if err != nil {
+		return "", err
+	}
+
+	if params.AutoMinerFee {
+		// calculating miner fee. In case %2==1, added +1
+		bytesNum := (len(txHex) + 1) / 2
+		satoshiPerByte, err := params.GetSatoshiPerByte(params.Net)
+		if err != nil {
+			return "", fmt.Errorf("couldn't fetch satoshiPerByte: %s", err)
+		}
+		params.MinerFee = int64(bytesNum * satoshiPerByte)
+		if params.MinerFee > maxMinerFee {
+			// preventing any possible losses
+			return "", fmt.Errorf("the maximum auto miner fee is reached, max=%d, got=%d", maxMinerFee, params.MinerFee)
+		}
+		return buildTx(params, addrs)
+	} else {
+		return txHex, nil
+	}
+}
+
+func buildTx(params CreateParams, addrs []address) (string, error) {
 	tx := wire.NewMsgTx(wire.TxVersion)
 
 	satoshiRemainder, err := addUTXOsToTxInputs(tx, addrs, params)
@@ -92,13 +123,16 @@ func Create(params CreateParams) (string, error) {
 
 func checkCreateParams(p CreateParams) (CreateParams, error) {
 	if p.MinerFee == 0 {
-		p.MinerFee = defaultMinerFee
+		p.MinerFee = DefaultMinerFee
 	}
 	if p.Net == "" {
 		p.Net = netchain.MainNet
 	}
 	if p.Fetch == nil {
 		p.Fetch = addressinfo.FetchFromBlockcypher
+	}
+	if p.GetSatoshiPerByte == nil {
+		p.GetSatoshiPerByte = addressinfo.GetSatoshiPerByteFromBlockchain
 	}
 
 	if len(p.Destinations) == 0 {
@@ -163,7 +197,7 @@ type address struct {
 	privateKey string
 }
 
-func getAddressesToWithdrawFrom(params CreateParams) ([]address, error){
+func getAddressesToWithdrawFrom(params CreateParams) ([]address, error) {
 	var addrsToWithdrawFrom []address
 	var satoshiSum int64
 	for _, pkInfo := range params.pkInfos {
@@ -184,7 +218,7 @@ func getAddressesToWithdrawFrom(params CreateParams) ([]address, error){
 	}
 }
 
-func addUTXOsToTxInputs(tx *wire.MsgTx, addrs []address, params CreateParams,) (satoshiRemainder int64, err error) {
+func addUTXOsToTxInputs(tx *wire.MsgTx, addrs []address, params CreateParams) (satoshiRemainder int64, err error) {
 	amountLeftToRedeem := params.fullCost()
 	for i, addr := range addrs {
 		isLastAddr := i == len(addrs)-1
@@ -318,12 +352,12 @@ func signTx(tx *wire.MsgTx, addresses []address) error {
 			if err != nil {
 				return fmt.Errorf("signing transaction failed, could compute hash utxo=%v", u)
 			}
-			utxosToSpendMap[h.String() + strconv.Itoa(u.TxOutIdx)] = utxoWithKey{UTXO: u, wif: wif}
+			utxosToSpendMap[h.String()+strconv.Itoa(u.TxOutIdx)] = utxoWithKey{UTXO: u, wif: wif}
 		}
 	}
 
 	for i, in := range tx.TxIn {
-		utxoOfIn := utxosToSpendMap[in.PreviousOutPoint.Hash.String() + strconv.Itoa(int(in.PreviousOutPoint.Index))]
+		utxoOfIn := utxosToSpendMap[in.PreviousOutPoint.Hash.String()+strconv.Itoa(int(in.PreviousOutPoint.Index))]
 		sourcePkString, err := hex.DecodeString(utxoOfIn.Pbscript)
 		if err != nil {
 			return err
