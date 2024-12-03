@@ -62,7 +62,7 @@ func main() {
 
 ### Real bitcoin transaction
 Refer to [examples/create-real-transaction](https://github.com/glossd/btc/blob/master/examples/create-real-transaction/main.go)
-I also use to transfer real bitcoins. Here's my usual configuration.
+I use it to transfer real bitcoins. Here's my usual configuration.
 ```go
 txutil.CreateParams{
 		PrivateKey:  "your-wallet-private-key", // e.g. 932u6Q4xEC9UYRb3rS2BWrSpSPEt5KaU8NNP7EWy7zSkWmfBiGe

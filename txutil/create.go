@@ -15,8 +15,8 @@ import (
 	"strconv"
 )
 
-const defaultMinerFee = 5000
-const minerFeeSatoshisPerByte = 25
+const DefaultMinerFee = 5000
+
 const maxMinerFee = 50000
 
 // https://support.blockchain.com/hc/en-us/articles/210354003-What-is-the-minimum-amount-I-can-send-
@@ -35,12 +35,16 @@ type CreateParams struct {
 	Destinations []Destination
 	// If true, all satoshi will be sent. Only works if you specified only one destination.
 	SendAll bool
-	// In satoshi, defaults to defaultMinerFee.
+	// In satoshi, defaults to DefaultMinerFee. Will be omitted if AutoMinerFee is true.
 	MinerFee int64
+	// Automatically calculates MinerFee. Will call an API addressinfo.GetSatoshiPerByte.
+	AutoMinerFee bool
 	// defaults to netchain.MainNet.
 	Net netchain.Net
 	// defaults to addressinfo.FetchFromBlockcypher.
 	Fetch addressinfo.Fetch
+	// defaults to addressinfo.GetSatoshiPerByteFromBlockchain.
+	GetSatoshiPerByte addressinfo.GetSatoshiPerByte
 
 	pkInfos   []privateKeyInfo
 	destInfos []destinationInfo
@@ -81,16 +85,21 @@ func Create(params CreateParams) (string, error) {
 		return "", err
 	}
 
-	if params.MinerFee > 0 {
-		return txHex, nil
-	} else {
-		// calculating miner fee
-		params.MinerFee = int64(len([]byte(txHex)) * minerFeeSatoshisPerByte)
+	if params.AutoMinerFee {
+		// calculating miner fee. In case %2==1, added +1
+		bytesNum := (len(txHex) + 1) / 2
+		satoshiPerByte, err := params.GetSatoshiPerByte(params.Net)
+		if err != nil {
+			return "", fmt.Errorf("couldn't fetch satoshiPerByte: %s", err)
+		}
+		params.MinerFee = int64(bytesNum * satoshiPerByte)
 		if params.MinerFee > maxMinerFee {
 			// preventing any possible losses
-			return "", fmt.Errorf("the maximum miner fee is reached, max=%d, got=%d", maxMinerFee)
+			return "", fmt.Errorf("the maximum auto miner fee is reached, max=%d, got=%d", maxMinerFee, params.MinerFee)
 		}
 		return buildTx(params, addrs)
+	} else {
+		return txHex, nil
 	}
 }
 
@@ -113,11 +122,17 @@ func buildTx(params CreateParams, addrs []address) (string, error) {
 }
 
 func checkCreateParams(p CreateParams) (CreateParams, error) {
+	if p.MinerFee == 0 {
+		p.MinerFee = DefaultMinerFee
+	}
 	if p.Net == "" {
 		p.Net = netchain.MainNet
 	}
 	if p.Fetch == nil {
 		p.Fetch = addressinfo.FetchFromBlockcypher
+	}
+	if p.GetSatoshiPerByte == nil {
+		p.GetSatoshiPerByte = addressinfo.GetSatoshiPerByteFromBlockchain
 	}
 
 	if len(p.Destinations) == 0 {

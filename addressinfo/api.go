@@ -4,7 +4,7 @@ import "github.com/glossd/btc/netchain"
 
 type Address struct {
 	Balance int64
-	UTXOs []UTXO
+	UTXOs   []UTXO
 }
 
 type UTXO struct {
@@ -15,3 +15,6 @@ type UTXO struct {
 }
 
 type Fetch func(address string, net netchain.Net) (Address, error)
+
+// GetSatoshiPerByte returns minimum 'good-enough' satoshi per byte rate.
+type GetSatoshiPerByte func(net netchain.Net) (int, error)
